@@ -99,6 +99,7 @@ function receiver(sck, data)
   -- if you're sending back HTML over HTTP you'll want something like this instead
   local response = {"HTTP/1.0 200 OK\r\nServer: NodeMCU on ESP8266\r\nContent-Type: text/html\r\n\r\n"}
   local  htmlFile=string.match(data,"GET /setAlarm.html")
+  
   if htmlFile then
         htmlFile=string.match(data,"editAlarmNo=%d")
         htmlFile=string.match(htmlFile,"%d")

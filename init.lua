@@ -2,7 +2,7 @@
 alarmON={}       --定时开启时间，格式：启用标志（1-启用，0-不启用），时，分，秒，重复间隔天数
 alarmOFF={}      --定时关闭时间，格式：时，分，秒
 interval={}      --间隔天数
-seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
+--seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
 --[[
     a
    ---
@@ -30,7 +30,7 @@ iflag=0
 local strAlarm,temp,i
 
 --初始化定时时间
-for i=1,2
+for i=1,5
 do 
     alarmON[i]={}    --二维数组
     alarmON[i][1]=0
@@ -81,8 +81,8 @@ i2c初始化设置，GPIO12、GPIO14连接到DS3231实时钟芯片
 ESP-07 GPIO Mapping
 IO index    ESP8266 pin
     0 [*]   GPIO16
-    1       GPIO5
-    2       GPIO4
+    1       GPIO4
+    2       GPIO5
     3       GPIO0
     4       GPIO2
     5       GPIO14
@@ -121,32 +121,16 @@ package.loaded["ds3231"]=nil
 local pin = 7
 gpio.mode(pin,gpio.INT)
 local sclk=4
-local lck=2
-local sda=1
+local lck=1
+local sda=2
 gpio.mode(sclk,gpio.OUTPUT)
 gpio.mode(lck,gpio.OUTPUT)
 gpio.mode(sda,gpio.OUTPUT)
-
-
 gpio.mode(0,gpio.OUTPUT)
-
-
-local i
-for i=1,48 do
-    gpio.write(sclk,gpio.LOW)
-    gpio.write(0,gpio.LOW)
-    gpio.write(sclk,gpio.HIGH)
-end
-
-i=nil
-
-gpio.write(sda,gpio.LOW)
-gpio.write(lck,gpio.LOW)
-gpio.write(sda,gpio.HIGH)
-gpio.write(lck,gpio.HIGH)
 
 local function disp()
 
+    local seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
     local i,j
     --local segTemp
     local realTime={}
@@ -158,7 +142,7 @@ local function disp()
     realTime[5]=math.floor(second/10)
     realTime[6]=second % 10
    
-    gpio.write(sda,gpio.LOW)
+    --gpio.write(sda,gpio.LOW)
     gpio.write(lck,gpio.LOW)
     
     --local segTemp
@@ -193,14 +177,9 @@ local function disp()
         end
     end
     
-    gpio.write(sda,gpio.HIGH)
+    --gpio.write(sda,gpio.HIGH)
     gpio.write(lck,gpio.HIGH)     --595锁存，595移位寄存器的值锁存到输出寄存器，从Q0-Q7输出
 end
-
-
-
-
-
 
 
 local function getTimeDS3231(level)
@@ -211,12 +190,11 @@ local function getTimeDS3231(level)
     print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year+2000, month, date))
 
     disp()     --显示时间
-
 --]]
     --与5组定时时间比较
  --[[    gpio.write(0,gpio.HIGH)
     gpio.write(1,gpio.HIGH)
-    gpio.write(2,gpio.HIGH)
+    gpio.write(2,gpio.E:M 1032E:M 1032E:M 1032HIGH)
     gpio.write(4,gpio.HIGH)
     segvar=0
  
