@@ -2,15 +2,35 @@
 alarmON={}       --定时开启时间，格式：启用标志（1-启用，0-不启用），时，分，秒，重复间隔天数
 alarmOFF={}      --定时关闭时间，格式：时，分，秒
 interval={}      --间隔天数
---seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
-seg={0xfa,0x41,0x76,0x5e,0x99,0x6b,0x5f,0x4a,0xfe,0xde}
+seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
+--[[
+    a
+   ---
+ b|   |f
+   -g-
+ c|   |e
+   ---
+    d
+
+74HC595的Q0-Q7连接数码管如下：
+Q0---->:  PM  ON  其中第三片595Q0接:的上面一个点，第四片接:的下面点
+          第二片接PM，第一片接ON
+Q1---->a
+Q2---->f
+Q3---->e
+Q4---->d
+Q5---->c
+Q6---->g
+Q7---->b
+--]]
+
 --当前日期、时间，初始化为2018-1-1 0:0:0 星期日
 second, minute, hour, day, date, month, year=0,0,0,1,1,1,18
 iflag=0
 local strAlarm,temp,i
 
 --初始化定时时间
-for i=1,5
+for i=1,2
 do 
     alarmON[i]={}    --二维数组
     alarmON[i][1]=0
@@ -113,27 +133,22 @@ gpio.mode(0,gpio.OUTPUT)
 
 local i
 for i=1,48 do
-    gpio.write(0,gpio.LOW)
-
     gpio.write(sclk,gpio.LOW)
-    print(i)
+    gpio.write(0,gpio.LOW)
     gpio.write(sclk,gpio.HIGH)
 end
+
+i=nil
+
+gpio.write(sda,gpio.LOW)
 gpio.write(lck,gpio.LOW)
+gpio.write(sda,gpio.HIGH)
 gpio.write(lck,gpio.HIGH)
-segvar = 1
 
+local function disp()
 
-local function getTimeDS3231(level)
-    local alarmId=1
-    ds3231=require("ds3231")
-    second, minute, hour, day, date, month, year = ds3231.getTime()
-
-print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year+2000, month, date))
-   
-
-    local i,j,k
-    local segTemp
+    local i,j
+    --local segTemp
     local realTime={}
     local segBits={}   --把7段码转换为8位二进制，每个数组元素保存一位二进制
     realTime[1]=math.floor(hour/10)
@@ -142,53 +157,62 @@ print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year
     realTime[4]=minute % 10
     realTime[5]=math.floor(second/10)
     realTime[6]=second % 10
-    gpio.write(lck,gpio.LOW)    
+   
+    gpio.write(sda,gpio.LOW)
+    gpio.write(lck,gpio.LOW)
     
-    local segTemp
-    segvar = segvar * 2
-    if segvar>128 then
-            segvar=1
-        end
-    print(string.format("seg=%d",segvar))
-     gpio.write(lck,gpio.LOW)
+    --local segTemp
     for i=1,6 do
-        segTemp = segvar
-        --segTemp=segvar
-        --segTemp=107        
-        --print(string.format("i=%d, realTime[%d]=%d",i,i,realTime[i]))
+        realTime[i]= seg[ realTime[i] + 1]
+        --segTemp = seg[ realTime[i] +1 ]
+        
+        --把一个字节转换为八位二进制，存放到segBits数组
         for j=1,8 do
-           --print(string.format("i=%d, j=%d, segtemp=%d",i,j,segTemp))
-           segBits[j]= segTemp % 2
-           segTemp = math.floor(segTemp /2)
+           segBits[j] = realTime[i] % 2
+           realTime[i] = math.floor(realTime[i] /2)
+           
+           --segBits[j]= segTemp % 2
+           --segTemp = math.floor(segTemp /2)
+        end
+
+        --增加小时和分钟之间的冒号（：），由中间二片595的Q0控制
+        --对应段码中的最低位，即segBits数组中的segBits[1]
+        if (i==3 or i==4) then
+            segBits[1]=1
         end
         
+        --输出八位二进制到74HC595
         for j=8,1,-1 do
             gpio.write(sclk,gpio.LOW)
-            --print(string.format("bits[%d]=%d",j,bits[j]))
             if  segBits[j]==1 then
                 gpio.write(0,gpio.HIGH)
-                gpio.write(sda,gpio.HIGH)
-                --print("1")
             else
                 gpio.write(0,gpio.LOW)
-                gpio.write(sda,gpio.LOW)
-                --print("0")
             end
-            gpio.write(sclk,gpio.HIGH)
+            gpio.write(sclk,gpio.HIGH)   --595时钟上上升沿，595移位寄存器移动一位
         end
     end
+    
+    gpio.write(sda,gpio.HIGH)
+    gpio.write(lck,gpio.HIGH)     --595锁存，595移位寄存器的值锁存到输出寄存器，从Q0-Q7输出
+end
 
-    gpio.write(lck,gpio.HIGH)
-    print(" ")
-    
-    
-    gpio.write(0,gpio.HIGH)
-    gpio.write(1,gpio.HIGH)
-    gpio.write(2,gpio.HIGH)
-    gpio.write(4,gpio.HIGH)
-    segvar=0
 
-    
+
+
+
+
+
+local function getTimeDS3231(level)
+    local alarmId=1
+    ds3231=require("ds3231")
+    second, minute, hour, day, date, month, year = ds3231.getTime()
+
+    print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year+2000, month, date))
+
+    disp()     --显示时间
+
+--]]
     --与5组定时时间比较
  --[[    gpio.write(0,gpio.HIGH)
     gpio.write(1,gpio.HIGH)
@@ -227,14 +251,14 @@ print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year
     -- 使用后释放ds3231模块
     ds3231 = nil
     package.loaded["ds3231"]=nil
-end 
-
+    
+end
 
 --设置下降沿中断及中断处理函数
 gpio.trig(pin, "down", getTimeDS3231)
 
 --wifi设置
---dofile("wifi.lua")
+dofile("wifi.lua")
 --启用http服务
---dofile("httpServer.lua")
+dofile("httpServer.lua")
 --dofile("telnet.lua")
