@@ -61,6 +61,25 @@ function M.getTime()
   bcdToDec(tonumber(string.byte(c, 7)))
 end
 
+--get temperature from DS3231
+function M.getTemperature()
+  i2c.start(id)
+  i2c.address(id, dev_addr, i2c.TRANSMITTER)
+  i2c.write(id, 0x11)
+  i2c.stop(id)
+  i2c.start(id)
+  i2c.address(id, dev_addr, i2c.RECEIVER)
+  local c= i2c.read(id, 1) 
+  i2c.stop(id)
+  c=tonumber( string.byte(c,1) )
+  if  c >= 0x80 then   --温度零度以下，负数
+    c = bit.band( (bit.bnot(c) + 1),0xff)    --2的补码，按位求反加1得到原码
+    c = c * -1
+  end
+  return c
+end
+
+
 --set time for DS3231
 -- enosc setted to 1 disables oscilation on battery, stopping time
 function M.setTime(second, minute, hour, day, date, month, year, disOsc)

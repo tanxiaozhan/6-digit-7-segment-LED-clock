@@ -2,7 +2,7 @@
 alarmON={}       --定时开启时间，格式：启用标志（1-启用，0-不启用），时，分，秒，重复间隔天数
 alarmOFF={}      --定时关闭时间，格式：时，分，秒
 interval={}      --间隔天数
---seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
+
 --[[
     a
    ---
@@ -26,7 +26,7 @@ Q7---->b
 
 --当前日期、时间，初始化为2018-1-1 0:0:0 星期日
 second, minute, hour, day, date, month, year=0,0,0,1,1,1,18
-iflag=0
+
 local strAlarm,temp,i
 
 --初始化定时时间
@@ -102,103 +102,116 @@ i2c.setup(0, SDA, SCL, i2c.SLOW) -- call i2c.setup() only once
 local alarmId=1   --DS3231定时1
 ds3231.setAlarm(alarmId,ds3231.EVERYSECOND)
 --ds3231.enableAlarm(alarmId)
-second, minute, hour, day, date, month, year = ds3231.getTime()
-
--- Get current time
-print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year+2000, month, date))
-
-
-alarmId=nil
--- 使用后释放ds3231模块
-ds3231 = nil
-package.loaded["ds3231"]=nil
+--second, minute, hour, day, date, month, year = ds3231.getTime()
 
 ------------------------------------------------
 --
---设置pin1(GPIO13)为外部中断输入端
+--设置pin7(GPIO13)为外部中断输入端
 --
 ------------------------------------------------
-local pin = 7
+local pin = 7   --接DS3231实时钟闹输出，在此DS3231每秒输出闹信号，
+                --作为ESP8266的外部中断输入信号，即每秒中断一次，
+                --在中断处理程序中显示时间
 gpio.mode(pin,gpio.INT)
-local sclk=4
-local lck=1
-local sda=2
+
+local sclk=4    --接HC595第11脚移位时钟
+local lck=1     --接HC595第12脚锁存
+local sda=2     --接HC595第14脚数据输入
 gpio.mode(sclk,gpio.OUTPUT)
 gpio.mode(lck,gpio.OUTPUT)
 gpio.mode(sda,gpio.OUTPUT)
-gpio.mode(0,gpio.OUTPUT)
 
 local function disp()
 
-    local seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde}
+    local alarmId=1
+    ds3231=require("ds3231")
+    second, minute, hour, day, date, month, year = ds3231.getTime()
+    print(string.format("Time & Date: %s:%s:%s %s-%s-%s %s", hour, minute, second, year+2000, month, date,day))
+
+    local temperature = ds3231.getTemperature()
+    print(string.format("Temperature:%d",temperature))
+    
+
+    ds3231.reloadAlarms(alarmId)
+    alarmId,i=nil,nil
+    -- 使用后释放ds3231模块
+    ds3231 = nil
+    package.loaded["ds3231"]=nil
+
+    local seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde,0xb3,0x00}
     local i,j
-    --local segTemp
     local realTime={}
     local segBits={}   --把7段码转换为8位二进制，每个数组元素保存一位二进制
-    realTime[1]=math.floor(hour/10)
-    realTime[2]=hour % 10
-    realTime[3]=math.floor(minute/10)
-    realTime[4]=minute % 10
-    realTime[5]=math.floor(second/10)
-    realTime[6]=second % 10
-   
-    --gpio.write(sda,gpio.LOW)
+    
+    if (second % 9) == 0 then     --每9秒显示温度
+        realTime[1]=math.floor( temperature/10 )
+        realTime[2]=temperature % 10
+        realTime[3]=10   --显示摄氏度C
+        realTime[4]=11   --不显示
+        realTime[5]=11   
+        realTime[6]=11
+        
+
+    else
+        realTime[1]=math.floor(hour/10)
+        realTime[2]=hour % 10
+        realTime[3]=math.floor(minute/10)
+        realTime[4]=minute % 10
+        realTime[5]=math.floor(second/10)
+        realTime[6]=second % 10
+
+    end
+
+    realTime[7]= 2^day     --星期
+  
     gpio.write(lck,gpio.LOW)
     
-    --local segTemp
-    for i=1,6 do
-        realTime[i]= seg[ realTime[i] + 1]
-        --segTemp = seg[ realTime[i] +1 ]
+    for i=1,7 do
+        --0消隐，当小时的十位为0，不显示0
+        if (i==1 and realTime[1]==0) then
+            realTime[i]=0
+        else
+            if i<7 then     --不是星期，则取段码，是星期，则不改变realTime的值
+                realTime[i]= seg[ realTime[i] + 1]
+            end
+        end
+
         
         --把一个字节转换为八位二进制，存放到segBits数组
         for j=1,8 do
            segBits[j] = realTime[i] % 2
            realTime[i] = math.floor(realTime[i] /2)
-           
-           --segBits[j]= segTemp % 2
-           --segTemp = math.floor(segTemp /2)
         end
 
         --增加小时和分钟之间的冒号（：），由中间二片595的Q0控制
         --对应段码中的最低位，即segBits数组中的segBits[1]
-        if (i==3 or i==4) then
+        if (i==3 or i==4) and (second % 9 ~= 0) then
             segBits[1]=1
         end
-        
+       
         --输出八位二进制到74HC595
         for j=8,1,-1 do
             gpio.write(sclk,gpio.LOW)
             if  segBits[j]==1 then
-                gpio.write(0,gpio.HIGH)
+                gpio.write(sda,gpio.HIGH)
             else
-                gpio.write(0,gpio.LOW)
+                gpio.write(sda,gpio.LOW)
             end
             gpio.write(sclk,gpio.HIGH)   --595时钟上上升沿，595移位寄存器移动一位
         end
     end
-    
-    --gpio.write(sda,gpio.HIGH)
     gpio.write(lck,gpio.HIGH)     --595锁存，595移位寄存器的值锁存到输出寄存器，从Q0-Q7输出
+   
 end
 
 
+--外部中断处理程序，每秒中断一次
 local function getTimeDS3231(level)
-    local alarmId=1
-    ds3231=require("ds3231")
-    second, minute, hour, day, date, month, year = ds3231.getTime()
-
-    print(string.format("Time & Date: %s:%s:%s %s-%s-%s", hour, minute, second, year+2000, month, date))
 
     disp()     --显示时间
 --]]
     --与5组定时时间比较
- --[[    gpio.write(0,gpio.HIGH)
-    gpio.write(1,gpio.HIGH)
-    gpio.write(2,gpio.E:M 1032E:M 1032E:M 1032HIGH)
-    gpio.write(4,gpio.HIGH)
-    segvar=0
- 
-    
+ --[[   
     local i
     for i=1,5 do
         --该组定时启用，则比较时间
@@ -221,15 +234,6 @@ local function getTimeDS3231(level)
         end
     end
 --]]
-    --print(string.format("Date & Time: %s-%s-%s %s:%s:%s", year+2000,month,date,hour, minute, second))
-
-    ds3231.reloadAlarms(alarmId)
-    
-    alarmId,i=nil,nil
-    -- 使用后释放ds3231模块
-    ds3231 = nil
-    package.loaded["ds3231"]=nil
-    
 end
 
 --设置下降沿中断及中断处理函数
