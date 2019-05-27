@@ -128,29 +128,39 @@ local function disp()
     second, minute, hour, day, date, month, year = ds3231.getTime()
     print(string.format("Time & Date: %s:%s:%s %s-%s-%s %s", hour, minute, second, year+2000, month, date,day))
 
-    local temperature = ds3231.getTemperature()
-    print(string.format("Temperature:%d",temperature))
-    
-
-    ds3231.reloadAlarms(alarmId)
-    alarmId,i=nil,nil
-    -- 使用后释放ds3231模块
-    ds3231 = nil
-    package.loaded["ds3231"]=nil
-
-    local seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde,0xb3,0x00}
+    local seg={0xbe,0x0c,0x76,0x5e,0xcc,0xda,0xfa,0x0e,0xfe,0xde,0xb3,0x00,0x40,0xb2}  --0,1...9,摄氏度C,空格,负号-,C
     local i,j
     local realTime={}
     local segBits={}   --把7段码转换为8位二进制，每个数组元素保存一位二进制
     
-    if (second % 9) == 0 then     --每9秒显示温度
-        realTime[1]=math.floor( temperature/10 )
-        realTime[2]=temperature % 10
-        realTime[3]=10   --显示摄氏度C
-        realTime[4]=11   --不显示
-        realTime[5]=11   
-        realTime[6]=11
-        
+    if ((second % 9) == 0) and (second ~= 0) then     --每9秒显示温度
+        local temperature = ds3231.getTemperature()
+        print(string.format("Temperature:%d",temperature))
+
+        if temperature >= 0 then
+            realTime[1]=math.floor( temperature/10 )
+            realTime[2]=temperature % 10
+            realTime[3]=10   --显示摄氏度C，seg[10]段码
+            realTime[4]=11   --不显示，seg[11]
+            realTime[5]=11   
+            realTime[6]=11
+        else                 --零度以下显示
+            temperature = temperature * -1   --为方便起见，把负温度值变为正温度
+            realTime[1]=12   --显示负号,seg[12]段码
+            if temperature < 10 then   
+                realTime[2]=temperature
+                realTime[3]=10   --显示摄氏度C
+                realTime[4]=11   --不显示
+                realTime[5]=11
+                realTime[6]=11
+            else
+                realTime[2]=math.floor( temperature/10 )
+                realTime[3]=temperature % 10
+                realTime[4]=13   --显示摄氏度C,段码0xb2,仅显示C，无。
+                realTime[5]=11   --不显示
+                realTime[6]=11
+            end
+        end
 
     else
         realTime[1]=math.floor(hour/10)
@@ -161,6 +171,12 @@ local function disp()
         realTime[6]=second % 10
 
     end
+
+    ds3231.reloadAlarms(alarmId)
+    alarmId,i=nil,nil
+    -- 使用后释放ds3231模块
+    ds3231 = nil
+    package.loaded["ds3231"]=nil
 
     realTime[7]= 2^day     --星期
   
@@ -185,7 +201,7 @@ local function disp()
 
         --增加小时和分钟之间的冒号（：），由中间二片595的Q0控制
         --对应段码中的最低位，即segBits数组中的segBits[1]
-        if (i==3 or i==4) and (second % 9 ~= 0) then
+        if (i==3 or i==4) and ((second % 9 ~= 0) or second==0) then
             segBits[1]=1
         end
        
